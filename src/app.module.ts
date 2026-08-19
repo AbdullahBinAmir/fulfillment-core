@@ -8,6 +8,8 @@ import { OrdersModule } from './orders/orders.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { WarehouseModule } from './warehouse/warehouse.module';
+import { ReportingModule } from './reporting/reporting.module';
 
 @Module({
   imports: [
@@ -30,6 +32,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
     InventoryModule,
     NotificationsModule,
     AnalyticsModule,
+    WarehouseModule,
+    ReportingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
