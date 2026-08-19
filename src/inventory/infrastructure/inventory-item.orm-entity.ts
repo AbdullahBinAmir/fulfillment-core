@@ -1,7 +1,7 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-@Entity()
-export class InventoryItem {
+@Entity('inventory_item')
+export class InventoryItemOrmEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 

@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { InventoryItem } from './inventory-item.entity';
+import { InventoryItemOrmEntity } from './infrastructure/inventory-item.orm-entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([InventoryItem])],
-  exports: [TypeOrmModule],
+  imports: [TypeOrmModule.forFeature([InventoryItemOrmEntity])],
 })
 export class InventoryModule {}

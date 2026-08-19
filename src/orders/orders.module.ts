@@ -1,12 +1,16 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { InventoryModule } from '../inventory/inventory.module';
-import { Order } from './order.entity';
-import { PlaceOrderService } from './place-order.service';
+import { PlaceOrderUseCase } from './application/place-order.use-case';
+import { UNIT_OF_WORK } from './domain/unit-of-work.port';
+import { OrderOrmEntity } from './infrastructure/order.orm-entity';
+import { TypeOrmUnitOfWork } from './infrastructure/typeorm-unit-of-work';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Order]), InventoryModule],
-  providers: [PlaceOrderService],
-  exports: [PlaceOrderService],
+  imports: [TypeOrmModule.forFeature([OrderOrmEntity])],
+  providers: [
+    PlaceOrderUseCase,
+    { provide: UNIT_OF_WORK, useClass: TypeOrmUnitOfWork },
+  ],
+  exports: [PlaceOrderUseCase],
 })
 export class OrdersModule {}
