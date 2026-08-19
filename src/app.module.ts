@@ -6,6 +6,8 @@ import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { OrdersModule } from './orders/orders.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -26,6 +28,8 @@ import { InventoryModule } from './inventory/inventory.module';
     HealthModule,
     OrdersModule,
     InventoryModule,
+    NotificationsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
