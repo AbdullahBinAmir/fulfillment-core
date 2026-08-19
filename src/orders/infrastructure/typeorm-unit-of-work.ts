@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { TypeOrmInventoryRepository } from '../../inventory/infrastructure/typeorm-inventory.repository';
+import { TypeOrmOutboxRepository } from '../../outbox/infrastructure/typeorm-outbox.repository';
 import { TransactionContext, UnitOfWork } from '../domain/unit-of-work.port';
 import { TypeOrmOrderRepository } from './typeorm-order.repository';
 
@@ -14,6 +15,7 @@ export class TypeOrmUnitOfWork implements UnitOfWork {
       const ctx: TransactionContext = {
         orders: new TypeOrmOrderRepository(manager),
         inventory: new TypeOrmInventoryRepository(manager),
+        outbox: new TypeOrmOutboxRepository(manager),
       };
       return work(ctx);
     });

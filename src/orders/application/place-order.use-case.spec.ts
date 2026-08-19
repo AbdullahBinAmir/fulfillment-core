@@ -4,6 +4,7 @@ import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InventoryItemOrmEntity } from '../../inventory/infrastructure/inventory-item.orm-entity';
 import { InventoryModule } from '../../inventory/inventory.module';
+import { OutboxMessageOrmEntity } from '../../outbox/infrastructure/outbox-message.orm-entity';
 import { OrderOrmEntity } from '../infrastructure/order.orm-entity';
 import { OrdersModule } from '../orders.module';
 import { PlaceOrderUseCase } from './place-order.use-case';
@@ -17,6 +18,7 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
   let placeOrderUseCase: PlaceOrderUseCase;
   let orderRepository: Repository<OrderOrmEntity>;
   let inventoryRepository: Repository<InventoryItemOrmEntity>;
+  let outboxRepository: Repository<OutboxMessageOrmEntity>;
 
   const TEST_PRODUCT_ID = 'test-widget-m2-uow';
   const TEST_CUSTOMER_ID = 'customer-m2-uow-test';
@@ -40,17 +42,26 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
         }),
         OrdersModule,
         InventoryModule,
+        TypeOrmModule.forFeature([OutboxMessageOrmEntity]),
       ],
     }).compile();
 
     placeOrderUseCase = module.get(PlaceOrderUseCase);
     orderRepository = module.get(getRepositoryToken(OrderOrmEntity));
     inventoryRepository = module.get(getRepositoryToken(InventoryItemOrmEntity));
+    outboxRepository = module.get(getRepositoryToken(OutboxMessageOrmEntity));
   });
 
   afterEach(async () => {
     await orderRepository.delete({ customerId: TEST_CUSTOMER_ID });
     await inventoryRepository.delete({ productId: TEST_PRODUCT_ID });
+    await outboxRepository
+      .createQueryBuilder()
+      .delete()
+      .where(`payload->>'customerId' = :customerId`, {
+        customerId: TEST_CUSTOMER_ID,
+      })
+      .execute();
   });
 
   afterAll(async () => {
@@ -79,6 +90,14 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
       productId: TEST_PRODUCT_ID,
     });
     expect(inventoryItem?.quantity).toBe(1);
+
+    const outboxRows = await outboxRepository
+      .createQueryBuilder()
+      .where(`payload->>'customerId' = :customerId`, {
+        customerId: TEST_CUSTOMER_ID,
+      })
+      .getMany();
+    expect(outboxRows).toHaveLength(0);
   });
 
   it('persists both the order and the reservation together on success', async () => {
@@ -98,5 +117,16 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
       productId: TEST_PRODUCT_ID,
     });
     expect(inventoryItem?.quantity).toBe(7);
+
+    const outboxRows = await outboxRepository
+      .createQueryBuilder()
+      .where(`payload->>'customerId' = :customerId`, {
+        customerId: TEST_CUSTOMER_ID,
+      })
+      .getMany();
+    expect(outboxRows).toHaveLength(1);
+    expect(outboxRows[0].eventType).toBe('OrderPlaced');
+    expect(outboxRows[0].processedAt).toBeNull();
+    expect((outboxRows[0].payload as { total: number }).total).toBe(27);
   });
 });
