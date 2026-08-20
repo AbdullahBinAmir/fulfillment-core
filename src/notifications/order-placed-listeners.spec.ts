@@ -3,6 +3,7 @@ import { CqrsModule, EventBus } from '@nestjs/cqrs';
 import { Test } from '@nestjs/testing';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TrackOrderPlacedHandler } from '../analytics/track-order-placed.handler';
+import { IDEMPOTENCY_STORE } from '../idempotency/domain/idempotency-store.port';
 import { OrderPlacedEvent } from '../orders/domain/order-placed.event';
 import { EmailService } from './email.service';
 import { SendOrderConfirmationHandler } from './send-order-confirmation.handler';
@@ -33,6 +34,13 @@ describe('OrderPlacedEvent listeners (M4 — Domain Events)', () => {
         },
         TrackOrderPlacedHandler,
         { provide: AnalyticsService, useValue: { track: trackSpy } },
+        {
+          provide: IDEMPOTENCY_STORE,
+          useValue: {
+            hasProcessed: jest.fn().mockResolvedValue(false),
+            markProcessed: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -40,7 +48,9 @@ describe('OrderPlacedEvent listeners (M4 — Domain Events)', () => {
     await app.init();
 
     const eventBus = app.get(EventBus);
-    eventBus.publish(new OrderPlacedEvent('order-1', 'customer-1', 42));
+    eventBus.publish(
+      new OrderPlacedEvent('event-1', 'order-1', 'customer-1', 42),
+    );
 
     // Handlers run async off the publish() call — flush the microtask/macrotask
     // queue so both have had a chance to run before asserting.

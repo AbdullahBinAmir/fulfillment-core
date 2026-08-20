@@ -60,11 +60,13 @@ export class OutboxDispatcherService {
     switch (message.eventType) {
       case 'OrderPlaced': {
         const payload = message.payload as {
+          eventId: string;
           orderId: string;
           customerId: string;
           total: number;
         };
         return new OrderPlacedEvent(
+          payload.eventId,
           payload.orderId,
           payload.customerId,
           payload.total,

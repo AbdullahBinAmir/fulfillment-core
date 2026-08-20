@@ -58,7 +58,12 @@ describe('OutboxDispatcherService', () => {
     const message = await outboxRepository.save(
       outboxRepository.create({
         eventType: 'OrderPlaced',
-        payload: { orderId: 'order-1', customerId: 'customer-1', total: 42 },
+        payload: {
+          eventId: 'event-1',
+          orderId: 'order-1',
+          customerId: 'customer-1',
+          total: 42,
+        },
       }),
     );
     createdIds.push(message.id);
