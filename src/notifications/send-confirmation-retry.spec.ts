@@ -1,24 +1,28 @@
+import { getQueueToken } from '@nestjs/bullmq';
+import { BullModule } from '@nestjs/bullmq';
 import { INestApplication } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
-import { BullModule } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import { ProcessedMessageOrmEntity } from '../idempotency/infrastructure/processed-message.orm-entity';
 import { EmailService } from './email.service';
 import { NotificationsWorkerModule } from './notifications-worker.module';
-import { SendConfirmationJobData } from './notifications.queue';
+import {
+  NOTIFICATIONS_QUEUE,
+  SEND_CONFIRMATION_JOB,
+} from './notifications.queue';
 import { SendConfirmationProcessor } from './send-confirmation.processor';
 
-// M7 acceptance test (build guide, Section 3), re-anchored at the M8 worker:
-// the real send moved from SendOrderConfirmationHandler (now just a BullMQ
-// producer) to SendConfirmationProcessor, so this is where "same event
-// twice -> side effect once" actually has to hold.
-describe('SendConfirmationProcessor (M7 idempotency, on the M8 worker)', () => {
+// M8 Step 6 acceptance test (build guide, Section 4): a job that fails on
+// its first attempt must retry with backoff and succeed — without any
+// extra code, since that's the whole point of BullMQ's attempts/backoff
+// options over hand-rolled retry logic.
+describe('SendConfirmationProcessor (M8 — retry with backoff)', () => {
   let module: TestingModule;
   let app: INestApplication;
-  let processor: SendConfirmationProcessor;
+  let queue: Queue;
   let emailService: EmailService;
   let ledgerRepository: Repository<ProcessedMessageOrmEntity>;
 
@@ -55,7 +59,7 @@ describe('SendConfirmationProcessor (M7 idempotency, on the M8 worker)', () => {
     app = module.createNestApplication();
     await app.init();
 
-    processor = module.get(SendConfirmationProcessor);
+    queue = module.get(getQueueToken(NOTIFICATIONS_QUEUE));
     emailService = module.get(EmailService);
     ledgerRepository = module.get(
       getRepositoryToken(ProcessedMessageOrmEntity),
@@ -63,34 +67,58 @@ describe('SendConfirmationProcessor (M7 idempotency, on the M8 worker)', () => {
   });
 
   afterEach(async () => {
-    await ledgerRepository.delete({ eventId: 'm7-idempotency-event-1' });
+    // Redis is real and persists across runs — BullMQ's jobId dedup means a
+    // leftover completed job with this id would silently short-circuit the
+    // NEXT run's queue.add() without ever invoking the (freshly mocked)
+    // EmailService, so the job itself has to go, not just the ledger row.
+    const leftoverJob = await queue.getJob('m8-retry-event-1');
+    await leftoverJob?.remove();
+    await ledgerRepository.delete({ eventId: 'm8-retry-event-1' });
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  it('sends the confirmation exactly once when the same job is processed twice', async () => {
-    const sendConfirmationSpy = jest.spyOn(emailService, 'sendConfirmation');
-    const job = {
-      data: {
-        eventId: 'm7-idempotency-event-1',
-        orderId: 'order-1',
+  it('retries a job that fails on its first attempt and succeeds on the second', async () => {
+    let calls = 0;
+    jest.spyOn(emailService, 'sendConfirmation').mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.reject(new Error('transient provider failure'));
+      }
+      return Promise.resolve();
+    });
+
+    const job = await queue.add(
+      SEND_CONFIRMATION_JOB,
+      { eventId: 'm8-retry-event-1', orderId: 'order-1' },
+      {
+        jobId: 'm8-retry-event-1',
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 200 },
       },
-    } as Job<SendConfirmationJobData>;
+    );
 
-    await processor.process(job);
-    await processor.process(job);
+    const deadline = Date.now() + 5000;
+    let current = job;
+    let finished = await current.isCompleted();
+    while (!finished && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      current = (await queue.getJob(job.id as string)) ?? current;
+      finished = await current.isCompleted();
+    }
 
-    expect(sendConfirmationSpy).toHaveBeenCalledTimes(1);
-    expect(sendConfirmationSpy).toHaveBeenCalledWith('order-1');
+    expect(finished).toBe(true);
+    expect(calls).toBe(2);
+    expect(current.attemptsMade).toBe(2);
 
     const ledgerRow = await ledgerRepository.findOne({
       where: {
-        eventId: 'm7-idempotency-event-1',
+        eventId: 'm8-retry-event-1',
         handlerName: SendConfirmationProcessor.name,
       },
     });
     expect(ledgerRow).not.toBeNull();
-  });
+  }, 10000);
 });
