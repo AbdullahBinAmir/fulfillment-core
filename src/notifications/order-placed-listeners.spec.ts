@@ -1,15 +1,18 @@
+import { getQueueToken } from '@nestjs/bullmq';
 import { INestApplication } from '@nestjs/common';
 import { CqrsModule, EventBus } from '@nestjs/cqrs';
 import { Test } from '@nestjs/testing';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { TrackOrderPlacedHandler } from '../analytics/track-order-placed.handler';
-import { IDEMPOTENCY_STORE } from '../idempotency/domain/idempotency-store.port';
 import { OrderPlacedEvent } from '../orders/domain/order-placed.event';
-import { EmailService } from './email.service';
+import { NOTIFICATIONS_QUEUE } from './notifications.queue';
 import { SendOrderConfirmationHandler } from './send-order-confirmation.handler';
 
 // M4 acceptance test (build guide, Section 7): one listener throwing must
-// never stop a sibling listener from running.
+// never stop a sibling listener from running. Since M8, SendOrderConfirmation
+// Handler only enqueues a BullMQ job rather than calling EmailService
+// directly, so the failure mode that stands in for "this listener's own work
+// blew up" is now the queue add() call rejecting (e.g. Redis unreachable).
 describe('OrderPlacedEvent listeners (M4 — Domain Events)', () => {
   let app: INestApplication;
 
@@ -25,22 +28,13 @@ describe('OrderPlacedEvent listeners (M4 — Domain Events)', () => {
       providers: [
         SendOrderConfirmationHandler,
         {
-          provide: EmailService,
+          provide: getQueueToken(NOTIFICATIONS_QUEUE),
           useValue: {
-            sendConfirmation: jest
-              .fn()
-              .mockRejectedValue(new Error('SMTP down')),
+            add: jest.fn().mockRejectedValue(new Error('Redis unreachable')),
           },
         },
         TrackOrderPlacedHandler,
         { provide: AnalyticsService, useValue: { track: trackSpy } },
-        {
-          provide: IDEMPOTENCY_STORE,
-          useValue: {
-            hasProcessed: jest.fn().mockResolvedValue(false),
-            markProcessed: jest.fn().mockResolvedValue(undefined),
-          },
-        },
       ],
     }).compile();
 

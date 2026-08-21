@@ -2,20 +2,23 @@ import { INestApplication } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken, TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
+import { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 import { ProcessedMessageOrmEntity } from '../idempotency/infrastructure/processed-message.orm-entity';
-import { OrderPlacedEvent } from '../orders/domain/order-placed.event';
 import { EmailService } from './email.service';
 import { NotificationsModule } from './notifications.module';
-import { SendOrderConfirmationHandler } from './send-order-confirmation.handler';
+import { SendConfirmationJobData } from './notifications.queue';
+import { SendConfirmationProcessor } from './send-confirmation.processor';
 
-// M7 acceptance test (build guide, Section 3): the same event delivered
-// twice must only produce the side effect once. This is what actually makes
-// at-least-once delivery (M8-M11's queues, and retries in general) safe.
-describe('SendOrderConfirmationHandler (M7 — idempotency)', () => {
+// M7 acceptance test (build guide, Section 3), re-anchored at the M8 worker:
+// the real send moved from SendOrderConfirmationHandler (now just a BullMQ
+// producer) to SendConfirmationProcessor, so this is where "same event
+// twice -> side effect once" actually has to hold.
+describe('SendConfirmationProcessor (M7 idempotency, on the M8 worker)', () => {
   let module: TestingModule;
   let app: INestApplication;
-  let handler: SendOrderConfirmationHandler;
+  let processor: SendConfirmationProcessor;
   let emailService: EmailService;
   let ledgerRepository: Repository<ProcessedMessageOrmEntity>;
 
@@ -36,6 +39,15 @@ describe('SendOrderConfirmationHandler (M7 — idempotency)', () => {
             synchronize: true,
           }),
         }),
+        BullModule.forRootAsync({
+          inject: [ConfigService],
+          useFactory: (config: ConfigService) => ({
+            connection: {
+              host: config.get<string>('REDIS_HOST'),
+              port: config.get<number>('REDIS_PORT'),
+            },
+          }),
+        }),
         NotificationsModule,
       ],
     }).compile();
@@ -43,7 +55,7 @@ describe('SendOrderConfirmationHandler (M7 — idempotency)', () => {
     app = module.createNestApplication();
     await app.init();
 
-    handler = module.get(SendOrderConfirmationHandler);
+    processor = module.get(SendConfirmationProcessor);
     emailService = module.get(EmailService);
     ledgerRepository = module.get(
       getRepositoryToken(ProcessedMessageOrmEntity),
@@ -58,17 +70,17 @@ describe('SendOrderConfirmationHandler (M7 — idempotency)', () => {
     await app.close();
   });
 
-  it('sends the confirmation exactly once when the same event is handled twice', async () => {
+  it('sends the confirmation exactly once when the same job is processed twice', async () => {
     const sendConfirmationSpy = jest.spyOn(emailService, 'sendConfirmation');
-    const event = new OrderPlacedEvent(
-      'm7-idempotency-event-1',
-      'order-1',
-      'customer-1',
-      42,
-    );
+    const job = {
+      data: {
+        eventId: 'm7-idempotency-event-1',
+        orderId: 'order-1',
+      },
+    } as Job<SendConfirmationJobData>;
 
-    await handler.handle(event);
-    await handler.handle(event);
+    await processor.process(job);
+    await processor.process(job);
 
     expect(sendConfirmationSpy).toHaveBeenCalledTimes(1);
     expect(sendConfirmationSpy).toHaveBeenCalledWith('order-1');
@@ -76,7 +88,7 @@ describe('SendOrderConfirmationHandler (M7 — idempotency)', () => {
     const ledgerRow = await ledgerRepository.findOne({
       where: {
         eventId: 'm7-idempotency-event-1',
-        handlerName: SendOrderConfirmationHandler.name,
+        handlerName: SendConfirmationProcessor.name,
       },
     });
     expect(ledgerRow).not.toBeNull();

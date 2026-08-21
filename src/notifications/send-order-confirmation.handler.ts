@@ -1,33 +1,30 @@
-import { Inject, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { EventsHandler, IEventHandler } from '@nestjs/cqrs';
-import { IDEMPOTENCY_STORE } from '../idempotency/domain/idempotency-store.port';
-import type { IdempotencyStore } from '../idempotency/domain/idempotency-store.port';
+import { Queue } from 'bullmq';
 import { OrderPlacedEvent } from '../orders/domain/order-placed.event';
-import { EmailService } from './email.service';
+import {
+  NOTIFICATIONS_QUEUE,
+  SEND_CONFIRMATION_JOB,
+  SendConfirmationJobData,
+} from './notifications.queue';
 
+// M8: this handler is now only a producer — the actual send (and the M7
+// idempotency check around it) moved to SendConfirmationProcessor, since
+// that's where the real side effect happens. jobId = event.eventId gives a
+// second, queue-level dedup on top of the ledger: BullMQ itself won't
+// re-add a job with an id that's already waiting/active in the queue.
 @EventsHandler(OrderPlacedEvent)
 export class SendOrderConfirmationHandler implements IEventHandler<OrderPlacedEvent> {
-  private readonly logger = new Logger(SendOrderConfirmationHandler.name);
-
   constructor(
-    private readonly email: EmailService,
-    @Inject(IDEMPOTENCY_STORE) private readonly idempotency: IdempotencyStore,
+    @InjectQueue(NOTIFICATIONS_QUEUE)
+    private readonly notificationsQueue: Queue<SendConfirmationJobData>,
   ) {}
 
   async handle(event: OrderPlacedEvent): Promise<void> {
-    const alreadyHandled = await this.idempotency.hasProcessed(
-      event.eventId,
-      SendOrderConfirmationHandler.name,
-    );
-    if (alreadyHandled) {
-      this.logger.log(`Skipping duplicate delivery of event ${event.eventId}`);
-      return;
-    }
-
-    await this.email.sendConfirmation(event.orderId);
-    await this.idempotency.markProcessed(
-      event.eventId,
-      SendOrderConfirmationHandler.name,
+    await this.notificationsQueue.add(
+      SEND_CONFIRMATION_JOB,
+      { eventId: event.eventId, orderId: event.orderId },
+      { jobId: event.eventId },
     );
   }
 }
