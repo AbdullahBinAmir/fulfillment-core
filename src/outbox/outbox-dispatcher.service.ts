@@ -4,6 +4,7 @@ import { Interval } from '@nestjs/schedule';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { OrderPlacedEvent } from '../orders/domain/order-placed.event';
+import type { Region } from '../orders/domain/order.entity';
 import { OutboxMessageOrmEntity } from './infrastructure/outbox-message.orm-entity';
 
 const MAX_ATTEMPTS = 5;
@@ -63,12 +64,14 @@ export class OutboxDispatcherService {
           eventId: string;
           orderId: string;
           customerId: string;
+          region: Region;
           total: number;
         };
         return new OrderPlacedEvent(
           payload.eventId,
           payload.orderId,
           payload.customerId,
+          payload.region,
           payload.total,
         );
       }

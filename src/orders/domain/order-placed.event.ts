@@ -1,3 +1,5 @@
+import type { Region } from './order.entity';
+
 export class OrderPlacedEvent {
   constructor(
     // Stable identity for this event, generated once when the event is
@@ -7,6 +9,7 @@ export class OrderPlacedEvent {
     public readonly eventId: string,
     public readonly orderId: string,
     public readonly customerId: string,
+    public readonly region: Region,
     public readonly total: number,
   ) {}
 }

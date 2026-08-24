@@ -62,6 +62,7 @@ describe('OutboxDispatcherService', () => {
           eventId: 'event-1',
           orderId: 'order-1',
           customerId: 'customer-1',
+          region: 'eu',
           total: 42,
         },
       }),

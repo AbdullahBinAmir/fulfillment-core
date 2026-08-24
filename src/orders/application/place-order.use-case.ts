@@ -22,6 +22,7 @@ export class PlaceOrderUseCase {
       const order = Order.create({
         customerId: cmd.customerId,
         customerTier: cmd.customerTier,
+        region: cmd.region,
         items: cmd.items,
         total,
       });
@@ -40,6 +41,7 @@ export class PlaceOrderUseCase {
         eventId: randomUUID(),
         orderId: order.id,
         customerId: order.customerId,
+        region: order.region,
         total: order.total,
       });
 

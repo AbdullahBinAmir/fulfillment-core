@@ -13,6 +13,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
 import { ReportingModule } from './reporting/reporting.module';
 import { OutboxModule } from './outbox/outbox.module';
+import { OrderEventsModule } from './order-events/order-events.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { OutboxModule } from './outbox/outbox.module';
     WarehouseModule,
     ReportingModule,
     OutboxModule,
+    OrderEventsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

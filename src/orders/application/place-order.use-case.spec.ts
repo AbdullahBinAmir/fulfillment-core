@@ -48,7 +48,9 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
 
     placeOrderUseCase = module.get(PlaceOrderUseCase);
     orderRepository = module.get(getRepositoryToken(OrderOrmEntity));
-    inventoryRepository = module.get(getRepositoryToken(InventoryItemOrmEntity));
+    inventoryRepository = module.get(
+      getRepositoryToken(InventoryItemOrmEntity),
+    );
     outboxRepository = module.get(getRepositoryToken(OutboxMessageOrmEntity));
   });
 
@@ -77,6 +79,7 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
       placeOrderUseCase.execute({
         customerId: TEST_CUSTOMER_ID,
         customerTier: 'standard',
+        region: 'us',
         items: [{ productId: TEST_PRODUCT_ID, quantity: 5, unitPrice: 10 }],
       }),
     ).rejects.toThrow('Insufficient stock');
@@ -108,6 +111,7 @@ describe('PlaceOrderUseCase (M2 — Unit of Work)', () => {
     const order = await placeOrderUseCase.execute({
       customerId: TEST_CUSTOMER_ID,
       customerTier: 'gold',
+      region: 'eu',
       items: [{ productId: TEST_PRODUCT_ID, quantity: 3, unitPrice: 10 }],
     });
 

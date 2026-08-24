@@ -43,7 +43,7 @@ describe('OrderPlacedEvent listeners (M4 — Domain Events)', () => {
 
     const eventBus = app.get(EventBus);
     eventBus.publish(
-      new OrderPlacedEvent('event-1', 'order-1', 'customer-1', 42),
+      new OrderPlacedEvent('event-1', 'order-1', 'customer-1', 'eu', 42),
     );
 
     // Handlers run async off the publish() call — flush the microtask/macrotask
